@@ -1,0 +1,23 @@
+[Unit]
+Description = Eclipse Zenoh Bridge for ROS2 with a DDS RMW
+Documentation=https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds
+After=network-online.target
+Wants=network-online.target
+
+
+[Service]
+Type=simple
+Environment=RUST_LOG=info
+ExecStart =+/usr/bin/zenoh-bridge-ros2dds -c /etc/zenoh-bridge-ros2dds/conf.json5
+KillMode=control-group
+KillSignal=SIGINT
+RestartKillSignal=SIGINT
+Restart=on-failure
+RestartSec=2
+User=zenoh-bridge-ros2dds
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zenoh-bridge-ros2dds
+[Install]
+WantedBy=multi-user.target
+

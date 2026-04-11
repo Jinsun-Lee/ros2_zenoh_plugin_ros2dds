@@ -1,0 +1,197 @@
+#
+# Copyright (c) 2022 ZettaScale Technology
+#
+# This program and the accompanying materials are made available under the
+# terms of the Eclipse Public License 2.0 which is available at
+# http://www.eclipse.org/legal/epl-2.0, or the Apache License, Version 2.0
+# which is available at https://www.apache.org/licenses/LICENSE-2.0.
+#
+# SPDX-License-Identifier: EPL-2.0 OR Apache-2.0
+#
+# Contributors:
+#   ZettaScale Zenoh Team, <zenoh@zettascale.tech>
+#
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # cyclors 0.2.6 does not compile with cmake 4
+      - name: Install cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.31.x'
+
+      - name: Install ACL
+        if: startsWith(matrix.os,'ubuntu')
+        run: sudo apt-get -y install libacl1-dev
+
+      - name: Install LLVM toolchain
+        if: startsWith(matrix.os,'macos')
+        run: |
+          brew install llvm@19
+          ls /opt/homebrew/opt/llvm@19/bin
+          echo "/opt/homebrew/opt/llvm@19/bin" >> $GITHUB_PATH
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup component add rustfmt clippy
+
+      - name: Code format check
+        run: cargo fmt --check -- --config "unstable_features=true,imports_granularity=Crate,group_imports=StdExternalCrate"
+      - name: Clippy without Cargo.lock
+        run: |
+          rm Cargo.lock
+          cargo clippy --workspace --all-targets --features stats,dynamic_plugin,dds_shm -- --deny warnings
+          git restore Cargo.lock
+
+      - name: Build zenoh-plugin-ros2dds
+        run: cargo build -p zenoh-plugin-ros2dds --verbose --all-targets
+
+      - name: Build zenoh-plugin-ros2dds (with dds_shm)
+        run: cargo build -p zenoh-plugin-ros2dds --features dds_shm --verbose --all-targets
+
+      - name: Build zenoh-plugin-ros2dds (with prefix_symbols)
+        run: cargo build -p zenoh-plugin-ros2dds --features prefix_symbols --verbose --all-targets
+
+      - name: Build zenoh-bridge-ros2dds
+        run: cargo build -p zenoh-bridge-ros2dds  --verbose --all-targets
+
+      - name: Build zenoh-bridge-ros2dds (with dds_shm)
+        run: cargo build -p zenoh-bridge-ros2dds --features dds_shm  --verbose --all-targets
+
+      - name: Build zenoh-bridge-ros2dds (with prefix_symbols)
+        run: cargo build -p zenoh-bridge-ros2dds --features prefix_symbols  --verbose --all-targets
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Run tests (with dds_shm)
+        run: cargo test --features dds_shm --verbose
+
+      - name: Run tests (with prefix_symbols)
+        run: cargo test --features prefix_symbols --verbose
+
+  system_tests_with_ros2_humble:
+    name: System tests with ROS 2 Humble
+    runs-on: ubuntu-latest
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-jammy-ros-humble-ros-base-latest
+    steps:
+    - uses: ros-tooling/setup-ros@v0.7
+      with:
+        required-ros-distributions: humble
+
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+    # cyclors 0.2.6 does not compile with cmake 4
+    - name: Install cmake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.31.x'
+
+    - name: Install ACL
+      run: sudo apt-get -y install libacl1-dev
+
+    - name: Copy rust-toolchain.toml and Cargo.lock to zenoh-test-ros2dds
+      shell: bash
+      run: 'cp rust-toolchain.toml Cargo.lock zenoh-test-ros2dds/'
+    # We need this to align the Zenoh version in zenoh-test-ros2dds with zenoh-plugin-ros2dds
+    - name: Align zenoh version in zenoh-test-ros2dds
+      shell: bash
+      run: 'sudo apt-get -y install python3-tomlkit && cd zenoh-test-ros2dds && python3 align_zenoh.py'
+    - name: Code format check
+      shell: bash
+      run: 'source /opt/ros/humble/setup.bash && cd zenoh-test-ros2dds && cargo fmt --check -- --config "unstable_features=true,imports_granularity=Crate,group_imports=StdExternalCrate"'
+    - name: Clippy
+      shell: bash
+      run: "source /opt/ros/humble/setup.bash && cd zenoh-test-ros2dds && cargo clippy --tests -- --deny warnings"
+
+    - name: Run ROS tests
+      shell: bash
+      # Note that we limit only one test item tested at the same time to avoid the confliction between bridges
+      run: "source /opt/ros/humble/setup.bash && cd zenoh-test-ros2dds && cargo test --verbose"
+
+  system_tests_with_ros2_jazzy:
+    name: System tests with ROS 2 Jazzy
+    runs-on: ubuntu-latest
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-ros-jazzy-ros-base-latest
+    steps:
+    - uses: ros-tooling/setup-ros@v0.7
+      with:
+        required-ros-distributions: jazzy
+
+    - uses: actions/checkout@v4
+    - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+    # cyclors 0.2.6 does not compile with cmake 4
+    - name: Install cmake
+      uses: jwlawson/actions-setup-cmake@v2
+      with:
+        cmake-version: '3.31.x'
+
+    - name: Install ACL
+      run: sudo apt-get -y install libacl1-dev
+
+    - name: Copy rust-toolchain.toml and Cargo.lock to zenoh-test-ros2dds
+      shell: bash
+      run: 'cp rust-toolchain.toml Cargo.lock zenoh-test-ros2dds/'
+    # We need this to align the Zenoh version in zenoh-test-ros2dds with zenoh-plugin-ros2dds
+    - name: Align zenoh version in zenoh-test-ros2dds
+      shell: bash
+      run: 'sudo apt-get -y install python3-tomlkit && cd zenoh-test-ros2dds && python3 align_zenoh.py'
+    - name: Code format check
+      shell: bash
+      run: 'source /opt/ros/jazzy/setup.bash && cd zenoh-test-ros2dds && cargo fmt --check -- --config "unstable_features=true,imports_granularity=Crate,group_imports=StdExternalCrate"'
+    - name: Clippy
+      shell: bash
+      run: "source /opt/ros/jazzy/setup.bash && cd zenoh-test-ros2dds && cargo clippy --tests -- --deny warnings"
+
+    - name: Run ROS tests
+      shell: bash
+      # Note that we limit only one test item tested at the same time to avoid the confliction between bridges
+      run: "source /opt/ros/jazzy/setup.bash && cd zenoh-test-ros2dds && cargo test --verbose"
+
+  markdown_lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v18
+        with:
+          config: '.markdownlint.yaml'
+          globs: '**/README.md'
+
+  # NOTE: In GitHub repository settings, the "Require status checks to pass
+  # before merging" branch protection rule ensures that commits are only merged
+  # from branches where specific status checks have passed. These checks are
+  # specified manually as a list of workflow job names. Thus we use this extra
+  # job to signal whether all CI checks have passed.
+  ci:
+    name: CI status checks
+    runs-on: ubuntu-latest
+    needs: [build, system_tests_with_ros2_humble, system_tests_with_ros2_jazzy, markdown_lint]
+    if: always()
+    steps:
+      - name: Check whether all jobs pass
+        run: echo '${{ toJson(needs) }}' | jq -e 'all(.result == "success")'
