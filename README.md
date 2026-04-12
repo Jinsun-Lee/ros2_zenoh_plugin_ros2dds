@@ -1,3 +1,8 @@
+# 설명
+ROS 2의 DDS 통신을 Zenoh 네트워크 위로 브리지해주는 Rust 플러그인/브리지 저장소입니다.
+
+<br><br>
+
 <img src="https://raw.githubusercontent.com/eclipse-zenoh/zenoh/main/zenoh-dragon.png" height="150">
 
 [![CI](https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds/workflows/Release/badge.svg)](https://github.com/eclipse-zenoh/zenoh-plugin-ros2dds/actions/workflows/release.yml)
